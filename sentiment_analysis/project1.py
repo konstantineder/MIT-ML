@@ -38,12 +38,11 @@ def hinge_loss_single(feature_vector, label, theta, theta_0):
         the hinge loss, as a float, associated with the given data point and
         parameters.
     """
-    z = label*(np.inner(theta,feature_vector)+theta_0)
+    z = label*(theta.T @ feature_vector + theta_0)
     if z<=1:
         return 1-z
     else:
         return 0
-    raise NotImplementedError
 
 
 def hinge_loss_full(feature_matrix, labels, theta, theta_0):
@@ -69,7 +68,6 @@ def hinge_loss_full(feature_matrix, labels, theta, theta_0):
         label = labels[i]
         l = l + hinge_loss_single(feature_vector, label, theta, theta_0)
     return l/n
-    raise NotImplementedError
 
 
 def perceptron_single_step_update(
@@ -93,8 +91,10 @@ def perceptron_single_step_update(
         the updated feature-coefficient parameter `theta` as a numpy array
         the updated offset parameter `theta_0` as a floating point number
     """
-    # Your code here
-    raise NotImplementedError
+    z = label * (current_theta.T @ feature_vector + current_theta_0)
+    theta = current_theta if z > 0 else current_theta + label * feature_vector
+    theta_0 = current_theta_0 if z > 0 else current_theta_0 + label
+    return theta, theta_0
 
 
 
@@ -120,14 +120,18 @@ def perceptron(feature_matrix, labels, T):
         the offset parameter `theta_0` as a floating point number
             (found also after T iterations through the feature matrix).
     """
-    # Your code here
-    raise NotImplementedError
-    for t in range(T):
-        for i in get_order(nsamples):
-            # Your code here
-            raise NotImplementedError
-    # Your code here
-    raise NotImplementedError
+    num_samples = len(labels)
+    theta = np.zeros((feature_matrix.shape[1],))
+    theta_0 = 0
+    for _ in range(T):
+        for i in range(num_samples):
+            label = labels[i]
+            feature_vector = feature_matrix[i]
+            theta, theta_0 = perceptron_single_step_update(feature_vector=feature_vector,
+                                                           label=label,
+                                                           current_theta=theta,
+                                                           current_theta_0=theta_0)
+    return theta, theta_0
 
 
 
@@ -157,8 +161,29 @@ def average_perceptron(feature_matrix, labels, T):
         the average offset parameter `theta_0` as a floating point number
             (averaged also over T iterations through the feature matrix).
     """
-    # Your code here
-    raise NotImplementedError
+    n_samples, n_features = feature_matrix.shape
+    theta = np.zeros(n_features, dtype=float)
+    theta_0 = 0.0
+
+    # Running sums (sum first, divide once at the end)
+    theta_sum = np.zeros(n_features, dtype=float)
+    theta_0_sum = 0.0
+    total_steps = n_samples * T
+
+    for _ in range(T):
+        for i in get_order(n_samples):
+            theta, theta_0 = perceptron_single_step_update(
+                feature_vector=feature_matrix[i],
+                label=labels[i],
+                current_theta=theta,
+                current_theta_0=theta_0,
+            )
+            theta_sum += theta
+            theta_0_sum += theta_0
+
+    avg_theta = theta_sum / total_steps
+    avg_theta_0 = theta_0_sum / total_steps
+    return avg_theta, avg_theta_0
 
 
 def pegasos_single_step_update(
@@ -188,8 +213,10 @@ def pegasos_single_step_update(
         real valued number with the value of theta_0 after the old updated has
         completed.
     """
-    # Your code here
-    raise NotImplementedError
+    z = label * (theta.T @ feature_vector + theta_0)
+    new_theta = (1-eta*L)*theta if z > 1 else (1-eta*L)*theta + eta*label * feature_vector
+    new_theta_0 = theta_0 if z > 1 else theta_0 + eta*label
+    return new_theta, new_theta_0
 
 
 
@@ -220,8 +247,23 @@ def pegasos(feature_matrix, labels, T, L):
         the value of the theta_0, the offset classification parameter, found
         after T iterations through the feature matrix.
     """
-    # Your code here
-    raise NotImplementedError
+    num_samples = len(labels)
+    theta = np.zeros((feature_matrix.shape[1],))
+    theta_0 = 0
+    count = 1
+    for _ in range(T):
+        for i in range(num_samples):
+            eta = 1/np.sqrt(count)
+            label = labels[i]
+            feature_vector = feature_matrix[i]
+            theta, theta_0 = pegasos_single_step_update(feature_vector=feature_vector,
+                                                        label=label,
+                                                        L=L,
+                                                        eta=eta,
+                                                        theta=theta,
+                                                        theta_0=theta_0)
+            count += 1
+    return theta, theta_0
 
 
 
@@ -257,8 +299,14 @@ def classify(feature_matrix, theta, theta_0):
         given theta and theta_0. If a prediction is GREATER THAN zero, it
         should be considered a positive classification.
     """
-    # Your code here
-    raise NotImplementedError
+    num_samples = feature_matrix.shape[0]
+    results = np.zeros((num_samples,))
+    for i in range(num_samples):
+        feature_vector = feature_matrix[i]
+        z = theta.T @ feature_vector + theta_0
+        result = 1 if z > 0 else -1
+        results[i]=result
+    return results
 
 
 def classifier_accuracy(
@@ -294,8 +342,12 @@ def classifier_accuracy(
         trained classifier on the training data and the second element is the
         accuracy of the trained classifier on the validation data.
     """
-    # Your code here
-    raise NotImplementedError
+    theta, theta_0 = classifier(train_feature_matrix, train_labels, **kwargs)
+
+    train_preds = classify(train_feature_matrix, theta, theta_0)
+    val_preds   = classify(val_feature_matrix,   theta, theta_0)
+
+    return accuracy(train_preds, train_labels), accuracy(val_preds, val_labels)
 
 
 
@@ -308,9 +360,6 @@ def extract_words(text):
         a list of lowercased words in the string, where punctuation and digits
         count as their own words.
     """
-    # Your code here
-    raise NotImplementedError
-
     for c in punctuation + digits:
         text = text.replace(c, ' ' + c + ' ')
     return text.lower().split()
@@ -328,17 +377,19 @@ def bag_of_words(texts, remove_stopword=False):
         a dictionary that maps each word appearing in `texts` to a unique
         integer `index`.
     """
-    # Your code here
-    raise NotImplementedError
     
-    indices_by_word = {}  # maps word to unique index
-    for text in texts:
-        word_list = extract_words(text)
-        for word in word_list:
-            if word in indices_by_word: continue
-            if word in stopword: continue
-            indices_by_word[word] = len(indices_by_word)
+    stopwords = {
+        'a','an','and','are','as','at','be','by','for','from','has','he','in',
+        'is','it','its','of','on','that','the','there','to','was','were','will','with'
+    }
 
+    indices_by_word = {}
+    for text in texts:
+        for word in extract_words(text):
+            if remove_stopword and word in stopwords:
+                continue
+            if word not in indices_by_word:
+                indices_by_word[word] = len(indices_by_word)
     return indices_by_word
 
 
@@ -353,16 +404,19 @@ def extract_bow_feature_vectors(reviews, indices_by_word, binarize=True):
         matrix thus has shape (n, m), where n counts reviews and m counts words
         in the dictionary.
     """
-    # Your code here
-    feature_matrix = np.zeros([len(reviews), len(indices_by_word)], dtype=np.float64)
+    n = len(reviews)
+    m = len(indices_by_word)
+    feature_matrix = np.zeros((n, m), dtype=np.float64)
+
     for i, text in enumerate(reviews):
-        word_list = extract_words(text)
-        for word in word_list:
-            if word not in indices_by_word: continue
-            feature_matrix[i, indices_by_word[word]] += 1
+        for word in extract_words(text):
+            j = indices_by_word.get(word)
+            if j is not None:
+                feature_matrix[i, j] += 1.0   # counts
+
     if binarize:
-        # Your code here
-        raise NotImplementedError
+        feature_matrix[feature_matrix > 0] = 1.0
+
     return feature_matrix
 
 
