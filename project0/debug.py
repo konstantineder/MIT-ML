@@ -1,9 +1,11 @@
 def get_sum_metrics(predictions, metrics=[]):
+    inner_metrics = metrics.copy()
     for i in range(3):
-        metrics.append(lambda x: x + i)
+        func = lambda x, i=i: x + i  
+        inner_metrics.append(func)
 
     sum_metrics = 0
-    for metric in metrics:
+    for metric in inner_metrics:
         sum_metrics += metric(predictions)
 
     return sum_metrics
