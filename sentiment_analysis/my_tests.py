@@ -22,7 +22,6 @@ def hinge_loss_single(feature_vector, label, theta, theta_0):
         return 1-z
     else:
         return 0
-    raise NotImplementedError
 
 
 def hinge_loss_full(feature_matrix, labels, theta, theta_0):
@@ -48,7 +47,6 @@ def hinge_loss_full(feature_matrix, labels, theta, theta_0):
         label = labels[i]
         l = l + hinge_loss_single(feature_vector, label, theta, theta_0)
     return l/n
-    raise NotImplementedError
 
 
 feature_vector = np.array([[1, 2, 4], [1, 2, 3]])
