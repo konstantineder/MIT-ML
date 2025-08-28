@@ -34,9 +34,17 @@ def epsilon_greedy(state_1, state_2, q_func, epsilon):
     Returns:
         (int, int): the indices describing the action/object to take
     """
-    # TODO Your code here
-    action_index, object_index = None, None
-    return (action_index, object_index)
+    if np.random.rand() < epsilon:
+        # explore: pick uniformly at random
+        action_index = np.random.randint(NUM_ACTIONS)
+        object_index = np.random.randint(NUM_OBJECTS)
+        return action_index, object_index
+
+    # exploit: pick argmax over A×O
+    q_slice = q_func[state_1, state_2, :, :]                 # shape: (NUM_ACTIONS, NUM_OBJECTS)
+    flat_idx = np.argmax(q_slice)
+    action_index, object_index = np.unravel_index(flat_idx, (NUM_ACTIONS, NUM_OBJECTS))
+    return action_index, object_index
 
 
 # pragma: coderesponse end
@@ -60,9 +68,22 @@ def tabular_q_learning(q_func, current_state_1, current_state_2, action_index,
     Returns:
         None
     """
-    # TODO Your code here
-    q_func[current_state_1, current_state_2, action_index,
-           object_index] = 0  # TODO Your update here
+    # Current Q-value for the given state-action-object triplet
+    current_q_value = q_func[current_state_1, current_state_2, action_index, object_index]
+
+    # Determine the maximum Q-value for the next state
+    if terminal:
+        # If the episode is over, the future Q-value is 0
+        max_future_q = 0
+    else:
+        # Maximum Q-value for the next state over all actions and objects
+        max_future_q = np.max(q_func[next_state_1, next_state_2, :, :])
+
+    # Update the Q-value using the Q-learning update rule
+    new_q_value = current_q_value + ALPHA * (reward + GAMMA * max_future_q - current_q_value)
+    
+    # Update the Q-function with the new Q-value
+    q_func[current_state_1, current_state_2, action_index, object_index] = new_q_value
 
     return None  # This function shouldn't return anything
 
@@ -84,28 +105,63 @@ def run_episode(for_training):
     """
     epsilon = TRAINING_EP if for_training else TESTING_EP
 
-    epi_reward = None
+    epi_reward = 0
     # initialize for each episode
-    # TODO Your code here
-
+    # start a new game; environment returns textual descriptions + terminal flag
     (current_room_desc, current_quest_desc, terminal) = framework.newGame()
+
+    # cumulative discounted reward for evaluation
+    if not for_training:
+        epi_reward = 0.0
+        discount = 1.0
 
     while not terminal:
         # Choose next action and execute
-        # TODO Your code here
+        # map textual state → tabular indices
+        state_1 = dict_room_desc[current_room_desc]
+        state_2 = dict_quest_desc[current_quest_desc]
+
+        # choose action/object via epsilon-greedy
+        action_index, object_index = epsilon_greedy(state_1, state_2, q_func, epsilon)
+
+        # step the environment
+        #   action_str, object_str = ACTIONS[action_index], OBJECTS[object_index]
+        #   reward, next_room_desc, next_quest_desc, terminal = framework.step_game(action_str, object_str)
+        next_room_desc, next_quest_desc, reward, terminal = framework.step_game(current_room_desc=current_room_desc,
+                                                                                current_quest_desc=current_quest_desc,
+                                                                                action_index=action_index, 
+                                                                                object_index=object_index)
 
         if for_training:
             # update Q-function.
-            # TODO Your code here
-            pass
+            # compute next-state indices (only if needed)
+            if terminal:
+                next_state_1 = next_state_2 = 0  # won't be used in update when terminal=True
+            else:
+                next_state_1 = dict_room_desc[next_room_desc]
+                next_state_2 = dict_quest_desc[next_quest_desc]
+
+            # tabular Q-learning update
+            tabular_q_learning(
+                q_func=q_func,
+                current_state_1=state_1,
+                current_state_2=state_2,
+                action_index=action_index,
+                object_index=object_index,
+                reward=reward,
+                next_state_1=next_state_1,
+                next_state_2=next_state_2,
+                terminal=terminal,
+            )
 
         if not for_training:
             # update reward
-            # TODO Your code here
-            pass
+            # accumulate discounted reward for evaluation
+            epi_reward += discount * reward
+            discount *= GAMMA
 
         # prepare next step
-        # TODO Your code here
+        current_room_desc, current_quest_desc = next_room_desc, next_quest_desc
 
     if not for_training:
         return epi_reward
@@ -167,4 +223,5 @@ if __name__ == '__main__':
     axis.set_ylabel('reward')
     axis.set_title(('Tablular: nRuns=%d, Epilon=%.2f, Epi=%d, alpha=%.4f' %
                     (NUM_RUNS, TRAINING_EP, NUM_EPIS_TRAIN, ALPHA)))
-    plt.show()
+    plt.savefig("tabular_q_learning.png")
+    #plt.show()

@@ -45,9 +45,17 @@ def epsilon_greedy(state_vector, theta, epsilon):
     Returns:
         (int, int): the indices describing the action/object to take
     """
-    # TODO Your code here
-    action_index, object_index = None, None
-    return (action_index, object_index)
+    if np.random.rand() < epsilon:
+        # explore: pick uniformly at random
+        action_index = np.random.randint(NUM_ACTIONS)
+        object_index = np.random.randint(NUM_OBJECTS)
+        return action_index, object_index
+
+    # exploit: pick argmax over A×O
+    scores=theta @ state_vector            
+    flat_idx = np.argmax(scores)
+    action_index, object_index = index2tuple(flat_idx)
+    return action_index, object_index
 # pragma: coderesponse end
 
 
@@ -68,8 +76,23 @@ def linear_q_learning(theta, current_state_vector, action_index, object_index,
     Returns:
         None
     """
-    # TODO Your code here
-    theta = None # TODO Your update here
+    # Current Q-value for the given state-action-object triplet
+    idx = tuple2index(action_index, object_index)
+    current_q_value = (theta @ current_state_vector)[idx]
+
+    # Determine the maximum Q-value for the next state
+    if terminal:
+        # If the episode is over, the future Q-value is 0
+        max_future_q = 0
+    else:
+        # Maximum Q-value for the next state over all actions and objects
+        scores=theta @ next_state_vector            
+        max_future_q = np.max(scores)
+
+    # Update the Q-value using the Q-learning update rule
+    theta[idx] += ALPHA * (reward + GAMMA * max_future_q - current_q_value) * current_state_vector
+    
+   
 # pragma: coderesponse end
 
 
@@ -85,7 +108,7 @@ def run_episode(for_training):
         None
     """
     epsilon = TRAINING_EP if for_training else TESTING_EP
-    epi_reward = None
+    epi_reward = 0.0
 
     # initialize for each episode
     # TODO Your code here
@@ -96,20 +119,31 @@ def run_episode(for_training):
         current_state = current_room_desc + current_quest_desc
         current_state_vector = utils.extract_bow_feature_vector(
             current_state, dictionary)
-        # TODO Your code here
+        
+        next_action_index, next_object_index = epsilon_greedy(current_state_vector, 
+                                                              theta, 
+                                                              epsilon) 
+        
+        next_room_desc, next_quest_desc, reward, terminal = framework.step_game(
+                                                            current_room_desc,
+                                                            current_quest_desc,
+                                                            next_action_index,
+                                                            next_object_index) 
+        
+        next_state = next_room_desc + next_quest_desc   
+        next_state_vector = utils.extract_bow_feature_vector(next_state, dictionary) 
 
         if for_training:
             # update Q-function.
-            # TODO Your code here
-            pass
+            linear_q_learning(theta, current_state_vector, next_action_index, 
+                next_object_index, reward, next_state_vector, terminal)
 
         if not for_training:
             # update reward
-            # TODO Your code here
-            pass
+            epi_reward += (GAMMA**(framework.STEP_COUNT - 1))*reward
 
         # prepare next step
-        # TODO Your code here
+        current_room_desc, current_quest_desc = next_room_desc, next_quest_desc
 
     if not for_training:
         return epi_reward
