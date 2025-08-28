@@ -134,12 +134,21 @@ def run_softmax_on_MNIST_mod3(temp_parameter=1):
 
     See run_softmax_on_MNIST for more info.
     """
-    # YOUR CODE HERE
-    raise NotImplementedError
+    train_x, train_y, test_x, test_y = get_MNIST_data()
+    train_y, test_y = update_y(train_y=train_y,test_y=test_y)
+    theta, cost_function_history = softmax_regression(train_x, train_y, temp_parameter, alpha=0.3, lambda_factor=1.0e-4, k=10, num_iterations=150)
+    plot_cost_function_over_time(cost_function_history)
+    test_error = compute_test_error_mod3(test_x, test_y, theta, temp_parameter)
+    # Save the model parameters theta obtained from calling softmax_regression to disk.
+    write_pickle_data(theta, "./theta_mod3.pkl.gz")
+
+    # TODO: add your code here for the "Using the Current Model" question in tab 6.
+    #      and print the test_error_mod3
+    return test_error
 
 
 # TODO: Run run_softmax_on_MNIST_mod3(), report the error rate
-
+print('softmax test_error=', run_softmax_on_MNIST_mod3(temp_parameter=1))
 
 #######################################################################
 # 7. Classification Using Manually Crafted Features
@@ -187,7 +196,11 @@ plot_images(train_x[1, ])
 
 ## Cubic Kernel ##
 # TODO: Find the 10-dimensional PCA representation of the training and test set
-
+n_components = 10
+train_x_centered, feature_means = center_data(train_x)
+pcs = principal_components(train_x_centered)
+train_pca10 = project_onto_PC(train_x, pcs, n_components, feature_means)
+test_pca10 = project_onto_PC(test_x, pcs, n_components, feature_means)
 
 # TODO: First fill out cubicFeatures() function in features.py as the below code requires it.
 
@@ -199,3 +212,8 @@ test_cube = cubic_features(test_pca10)
 
 # TODO: Train your softmax regression model using (train_cube, train_y)
 #       and evaluate its accuracy on (test_cube, test_y).
+theta, cost_function_history = softmax_regression(train_cube, train_y, 1, alpha=0.3, lambda_factor=1.0e-4, k=10, num_iterations=150)
+plot_cost_function_over_time(cost_function_history)
+test_error = compute_test_error(test_cube, test_y, theta, 1)
+
+print('softmax test_error with cubic representation: ', test_error)

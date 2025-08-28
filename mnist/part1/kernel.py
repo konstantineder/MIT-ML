@@ -19,8 +19,13 @@ def polynomial_kernel(X, Y, c, p):
         Returns:
             kernel_matrix - (n, m) Numpy array containing the kernel matrix
     """
-    # YOUR CODE HERE
-    raise NotImplementedError
+    # Compute the dot product between each pair of rows in X and Y
+    dot_product = np.dot(X, Y.T)
+    
+    # Compute the polynomial kernel matrix
+    kernel_matrix = (dot_product + c) ** p
+    
+    return kernel_matrix
 
 
 
@@ -38,5 +43,12 @@ def rbf_kernel(X, Y, gamma):
         Returns:
             kernel_matrix - (n, m) Numpy array containing the kernel matrix
     """
-    # YOUR CODE HERE
-    raise NotImplementedError
+    # Compute the squared Euclidean distance between each pair of rows in X and Y
+    X_norm = np.sum(X ** 2, axis=1).reshape(-1, 1)
+    Y_norm = np.sum(Y ** 2, axis=1).reshape(1, -1)
+    dist_sq = X_norm + Y_norm - 2 * np.dot(X, Y.T)
+    
+    # Compute the RBF kernel
+    kernel_matrix = np.exp(-gamma * dist_sq)
+    
+    return kernel_matrix
