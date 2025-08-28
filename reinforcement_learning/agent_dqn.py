@@ -1,4 +1,8 @@
-"""Linear QL agent"""
+"""Tabular QL agent"""
+import torch
+import torch.nn as nn
+import torch.optim as optim
+import torch.nn.functional as F
 import numpy as np
 import matplotlib.pyplot as plt
 from tqdm import tqdm
@@ -7,15 +11,14 @@ import utils
 
 DEBUG = False
 
-
 GAMMA = 0.5  # discounted factor
 TRAINING_EP = 0.5  # epsilon-greedy parameter for training
 TESTING_EP = 0.05  # epsilon-greedy parameter for testing
 NUM_RUNS = 10
-NUM_EPOCHS = 600
+NUM_EPOCHS = 300
 NUM_EPIS_TRAIN = 25  # number of episodes for training at each epoch
 NUM_EPIS_TEST = 50  # number of episodes for testing
-ALPHA = 0.001  # learning rate for training
+ALPHA = 0.1  # learning rate for training
 
 ACTIONS = framework.get_actions()
 OBJECTS = framework.get_objects()
@@ -23,22 +26,11 @@ NUM_ACTIONS = len(ACTIONS)
 NUM_OBJECTS = len(OBJECTS)
 
 
-def tuple2index(action_index, object_index):
-    """Converts a tuple (a,b) to an index c"""
-    return action_index * NUM_OBJECTS + object_index
-
-
-def index2tuple(index):
-    """Converts an index c to a tuple (a,b)"""
-    return index // NUM_OBJECTS, index % NUM_OBJECTS
-
-
-# pragma: coderesponse template name="linear_epsilon_greedy"
-def epsilon_greedy(state_vector, theta, epsilon):
+def epsilon_greedy(state_vector, epsilon):
     """Returns an action selected by an epsilon-greedy exploration policy
 
     Args:
-        state_vector (np.ndarray): extracted vector representation
+        state_vector (torch.FloatTensor): extracted vector representation
         theta (np.ndarray): current weight matrix
         epsilon (float): the probability of choosing a random command
 
@@ -52,98 +44,111 @@ def epsilon_greedy(state_vector, theta, epsilon):
         return action_index, object_index
 
     # exploit: pick argmax over A×O
-    scores=theta @ state_vector            
-    flat_idx = np.argmax(scores)
-    action_index, object_index = index2tuple(flat_idx)
+    with torch.no_grad():
+        q_action, q_object = model(state_vector)  # tensors of shape (A,), (O,)
+        action_index = torch.argmax(q_action).item()
+        object_index = torch.argmax(q_object).item()
     return action_index, object_index
-# pragma: coderesponse end
+
+class DQN(nn.Module):
+    """A simple deep Q network implementation.
+    Computes Q values for each (action, object) tuple given an input state vector
+    """
+
+    def __init__(self, state_dim, action_dim, object_dim, hidden_size=100):
+        super(DQN, self).__init__()
+        self.state_encoder = nn.Linear(state_dim, hidden_size)
+        self.state2action = nn.Linear(hidden_size, action_dim)
+        self.state2object = nn.Linear(hidden_size, object_dim)
+
+    def forward(self, x):
+        state = F.relu(self.state_encoder(x))
+        return self.state2action(state), self.state2object(state)
 
 
 # pragma: coderesponse template
-def linear_q_learning(theta, current_state_vector, action_index, object_index,
-                      reward, next_state_vector, terminal):
-    """Update theta for a given transition
+def deep_q_learning(current_state_vector, action_index, object_index, reward,
+                    next_state_vector, terminal):
+    """Updates the weights of the DQN for a given transition
 
     Args:
-        theta (np.ndarray): current weight matrix
-        current_state_vector (np.ndarray): vector representation of current state
+        current_state_vector (torch.FloatTensor): vector representation of current state
         action_index (int): index of the current action
         object_index (int): index of the current object
         reward (float): the immediate reward the agent recieves from playing current command
-        next_state_vector (np.ndarray): vector representation of next state
+        next_state_vector (torch.FloatTensor): vector representation of next state
         terminal (bool): True if this epsiode is over
 
     Returns:
         None
     """
-    # Current Q-value for the given state-action-object triplet
-    idx = tuple2index(action_index, object_index)
-    current_q_value = (theta @ current_state_vector)[idx]
+    # max_a',o' Q(s',a',o') = 0.5*(max_a Q_a(s',a') + max_o Q_o(s',o'))
+    with torch.no_grad():
+        q_next_a, q_next_o = model(next_state_vector)
+        maxq_next = 0.5 * (q_next_a.max() + q_next_o.max())
+        target = reward + (0.0 if terminal else GAMMA * maxq_next)
+        target = torch.as_tensor(target)
 
-    # Determine the maximum Q-value for the next state
-    if terminal:
-        # If the episode is over, the future Q-value is 0
-        max_future_q = 0
-    else:
-        # Maximum Q-value for the next state over all actions and objects
-        scores=theta @ next_state_vector            
-        max_future_q = np.max(scores)
+    # Current Q(s,a,o) prediction
+    q_a, q_o = model(current_state_vector)
+    q_pred = 0.5 * (q_a[action_index] + q_o[object_index])
 
-    # Update the Q-value using the Q-learning update rule
-    theta[idx] += ALPHA * (reward + GAMMA * max_future_q - current_q_value) * current_state_vector
-    
-   
+    # MSE loss
+    loss = F.mse_loss(q_pred, target)
+
+    optimizer.zero_grad()
+    loss.backward()
+    optimizer.step()
 # pragma: coderesponse end
 
 
 def run_episode(for_training):
-    """ Runs one episode
-    If for training, update Q function
-    If for testing, computes and return cumulative discounted reward
-
-    Args:
-        for_training (bool): True if for training
-
-    Returns:
-        None
+    """
+        Runs one episode
+        If for training, update Q function
+        If for testing, computes and return cumulative discounted reward
     """
     epsilon = TRAINING_EP if for_training else TESTING_EP
     epi_reward = 0.0
 
-    # initialize for each episode
-    # TODO Your code here
-
+    # reset env
     (current_room_desc, current_quest_desc, terminal) = framework.newGame()
+    t = 0
+
     while not terminal:
-        # Choose next action and execute
+        # build state vector
         current_state = current_room_desc + current_quest_desc
-        current_state_vector = utils.extract_bow_feature_vector(
-            current_state, dictionary)
-        
-        next_action_index, next_object_index = epsilon_greedy(current_state_vector, 
-                                                              theta, 
-                                                              epsilon) 
-        
+        current_state_vector = torch.FloatTensor(
+            utils.extract_bow_feature_vector(current_state, dictionary)
+        )
+
+        # choose action/object via ε-greedy
+        action_index, object_index = epsilon_greedy(current_state_vector, epsilon)
+
+        # step environment
         next_room_desc, next_quest_desc, reward, terminal = framework.step_game(
                                                             current_room_desc,
                                                             current_quest_desc,
-                                                            next_action_index,
-                                                            next_object_index) 
-        
-        next_state = next_room_desc + next_quest_desc   
-        next_state_vector = utils.extract_bow_feature_vector(next_state, dictionary) 
+                                                            action_index,
+                                                            object_index) 
+
+        # next state vector
+        next_state = next_room_desc + next_quest_desc
+        next_state_vector = torch.FloatTensor(
+            utils.extract_bow_feature_vector(next_state, dictionary)
+        )
 
         if for_training:
-            # update Q-function.
-            linear_q_learning(theta, current_state_vector, next_action_index, 
-                next_object_index, reward, next_state_vector, terminal)
+            # TD update
+            deep_q_learning(current_state_vector, action_index, object_index,
+                            reward, next_state_vector, terminal)
+        else:
+            # accumulate discounted reward
+            epi_reward += (GAMMA ** t) * reward
 
-        if not for_training:
-            # update reward
-            epi_reward += (GAMMA**(framework.STEP_COUNT - 1))*reward
-
-        # prepare next step
+        # advance
         current_room_desc, current_quest_desc = next_room_desc, next_quest_desc
+        t += 1
 
     if not for_training:
         return epi_reward
@@ -164,8 +169,10 @@ def run_epoch():
 
 def run():
     """Returns array of test reward per epoch for one run"""
-    global theta
-    theta = np.zeros([action_dim, state_dim])
+    global model
+    global optimizer
+    model = DQN(state_dim, NUM_ACTIONS, NUM_OBJECTS)
+    optimizer = optim.SGD(model.parameters(), lr=ALPHA)
 
     single_run_epoch_rewards_test = []
     pbar = tqdm(range(NUM_EPOCHS), ncols=80)
@@ -182,7 +189,6 @@ if __name__ == '__main__':
     state_texts = utils.load_data('game.tsv')
     dictionary = utils.bag_of_words(state_texts)
     state_dim = len(dictionary)
-    action_dim = NUM_ACTIONS * NUM_OBJECTS
 
     # set up the game
     framework.load_game_data()
@@ -202,4 +208,5 @@ if __name__ == '__main__':
     axis.set_ylabel('reward')
     axis.set_title(('Linear: nRuns=%d, Epilon=%.2f, Epi=%d, alpha=%.4f' %
                     (NUM_RUNS, TRAINING_EP, NUM_EPIS_TRAIN, ALPHA)))
+    plt.savefig("dqn_q_learning.png")
 
